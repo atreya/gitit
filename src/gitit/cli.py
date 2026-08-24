@@ -10,6 +10,7 @@ from .context import RepositoryContext, inspect_repository
 from .model import Candidate, Resolution, Risk
 from .openai_resolver import DEFAULT_MODEL, ModelError, resolve_with_openai
 from .resolver import resolve as resolve_offline
+from .ui import TerminalUI
 
 
 def _parser() -> argparse.ArgumentParser:
@@ -22,28 +23,16 @@ def _parser() -> argparse.ArgumentParser:
     return parser
 
 
-def _show(resolution: Resolution) -> None:
-    timing = f" in {resolution.elapsed_ms} ms" if resolution.elapsed_ms is not None else ""
-    print(f"\n  Resolved by {resolution.source}{timing}")
-    if resolution.clarification:
-        print(f"\n  {resolution.clarification}\n")
-    for index, candidate in enumerate(resolution.candidates, 1):
-        prefix = f"{index}." if len(resolution.candidates) > 1 else " "
-        print(f"  {prefix} {candidate.command}")
-        print(f"     {candidate.explanation}")
-        print(f"     Risk: {candidate.risk.label}\n")
-
-
-def _choose(resolution: Resolution) -> Candidate | None:
+def _choose(resolution: Resolution, ui: TerminalUI) -> Candidate | None:
     if len(resolution.candidates) == 1:
         return resolution.candidates[0]
     while True:
-        answer = input(f"Choose [1-{len(resolution.candidates)}] or [q] cancel: ").strip().lower()
+        answer = ui.prompt("Choose a command", f"[1-{len(resolution.candidates)}]  q cancel").strip().lower()
         if answer in {"q", "quit", "cancel", ""}:
             return None
         if answer.isdigit() and 1 <= int(answer) <= len(resolution.candidates):
             return resolution.candidates[int(answer) - 1]
-        print("Please choose one of the numbered suggestions.")
+        ui.error("Choose one of the numbered suggestions.")
 
 
 def _execute(candidate: Candidate, ctx: RepositoryContext, cwd: Path) -> int:
@@ -56,26 +45,30 @@ def _execute(candidate: Candidate, ctx: RepositoryContext, cwd: Path) -> int:
 
 
 def _handle(prompt: str, cwd: Path, no_execute: bool, offline: bool, model: str | None) -> int:
+    ui = TerminalUI()
     ctx = inspect_repository(cwd)
+    ui.waiting()
     try:
         resolution = resolve_offline(prompt, ctx) if offline else resolve_with_openai(prompt, ctx, model=model)
     except ModelError as error:
-        print(f"gitit: {error}", file=sys.stderr)
+        ui.clear_previous_line()
+        TerminalUI(sys.stderr).error(str(error))
         return 2
+    ui.clear_previous_line()
     if resolution is None:
-        print("gitit couldn't resolve that with the limited offline resolver.", file=sys.stderr)
+        TerminalUI(sys.stderr).error("The limited offline resolver could not understand that request.")
         return 2
-    _show(resolution)
+    ui.resolution(resolution)
     if no_execute or not sys.stdin.isatty():
         return 0
-    candidate = _choose(resolution)
+    candidate = _choose(resolution, ui)
     if candidate is None:
-        print("Cancelled.")
+        ui.cancelled()
         return 0
-    verb = "Run" if candidate.risk == Risk.READ_ONLY else "Confirm and run"
-    answer = input(f"{verb} `{candidate.command}`? [y/N] ").strip().lower()
+    verb = "Run command?" if candidate.risk == Risk.READ_ONLY else "Confirm and run?"
+    answer = ui.prompt(verb, "y yes  ·  n no").strip().lower()
     if answer not in {"y", "yes"}:
-        print("Cancelled.")
+        ui.cancelled()
         return 0
     return _execute(candidate, ctx, cwd)
 
@@ -88,10 +81,11 @@ def main(argv: list[str] | None = None) -> int:
         prompt = sys.stdin.read().strip()
         return _handle(prompt, args.cwd, True, args.offline, args.model) if prompt else 2
 
-    print("gitit interactive mode - describe what you want Git to do; 'q' exits.")
+    ui = TerminalUI()
+    ui.welcome()
     while True:
         try:
-            prompt = input("gitit> ").strip()
+            prompt = ui.prompt("gitit").strip()
         except (EOFError, KeyboardInterrupt):
             print()
             return 0

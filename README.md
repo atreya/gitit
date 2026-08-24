@@ -25,6 +25,8 @@ gitit "show me diff b/w feature-a and main"
 gitit
 ```
 
+Interactive terminals get a color-aware interface with a status dot, highlighted commands, muted explanations, and risk colors. Styling automatically switches off for redirected output, `TERM=dumb`, or when the standard `NO_COLOR` environment variable is set.
+
 Use `--no-execute` to resolve and display commands without offering to run them:
 
 ```bash

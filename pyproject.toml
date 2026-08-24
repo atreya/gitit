@@ -1,0 +1,19 @@
+[build-system]
+requires = ["setuptools>=69"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "gitit-cli"
+version = "0.1.0"
+description = "A fast, natural-language interface for Git"
+readme = "README.md"
+requires-python = ">=3.10"
+license = {text = "MIT"}
+authors = [{name = "gitit contributors"}]
+dependencies = []
+
+[project.scripts]
+gitit = "gitit.cli:main"
+
+[tool.setuptools.packages.find]
+where = ["src"]

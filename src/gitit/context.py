@@ -11,6 +11,8 @@ class RepositoryContext:
     current_branch: str | None
     branches: tuple[str, ...]
     remotes: tuple[str, ...]
+    upstream: str | None = None
+    status: tuple[str, ...] = ()
 
     @property
     def is_repository(self) -> bool:
@@ -36,6 +38,9 @@ def inspect_repository(cwd: Path | None = None) -> RepositoryContext:
     current = _git("branch", "--show-current", cwd=root) or None
     branch_text = _git("for-each-ref", "--format=%(refname:short)", "refs/heads", cwd=root)
     remote_text = _git("remote", cwd=root)
+    upstream = _git("rev-parse", "--abbrev-ref", "--symbolic-full-name", "@{upstream}", cwd=root)
+    status_text = _git("status", "--short", cwd=root)
     branches = tuple(line for line in (branch_text or "").splitlines() if line)
     remotes = tuple(line for line in (remote_text or "").splitlines() if line)
-    return RepositoryContext(root, current, branches, remotes)
+    status = tuple(line for line in (status_text or "").splitlines() if line)[:50]
+    return RepositoryContext(root, current, branches, remotes, upstream, status)

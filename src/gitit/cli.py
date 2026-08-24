@@ -8,18 +8,23 @@ from pathlib import Path
 
 from .context import RepositoryContext, inspect_repository
 from .model import Candidate, Resolution, Risk
-from .resolver import resolve
+from .openai_resolver import DEFAULT_MODEL, ModelError, resolve_with_openai
+from .resolver import resolve as resolve_offline
 
 
 def _parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(prog="gitit", description="Turn natural language into reviewable Git commands.")
     parser.add_argument("prompt", nargs="*", help="what you want Git to do")
     parser.add_argument("--no-execute", action="store_true", help="show suggestions without offering to run them")
+    parser.add_argument("--offline", action="store_true", help="use the limited local resolver instead of an LLM")
+    parser.add_argument("--model", default=None, help=f"OpenAI model (default: GITIT_MODEL or {DEFAULT_MODEL})")
     parser.add_argument("--cwd", type=Path, default=Path.cwd(), help="repository to inspect and operate on")
     return parser
 
 
 def _show(resolution: Resolution) -> None:
+    timing = f" in {resolution.elapsed_ms} ms" if resolution.elapsed_ms is not None else ""
+    print(f"\n  Resolved by {resolution.source}{timing}")
     if resolution.clarification:
         print(f"\n  {resolution.clarification}\n")
     for index, candidate in enumerate(resolution.candidates, 1):
@@ -50,12 +55,15 @@ def _execute(candidate: Candidate, ctx: RepositoryContext, cwd: Path) -> int:
     return result.returncode
 
 
-def _handle(prompt: str, cwd: Path, no_execute: bool) -> int:
+def _handle(prompt: str, cwd: Path, no_execute: bool, offline: bool, model: str | None) -> int:
     ctx = inspect_repository(cwd)
-    resolution = resolve(prompt, ctx)
+    try:
+        resolution = resolve_offline(prompt, ctx) if offline else resolve_with_openai(prompt, ctx, model=model)
+    except ModelError as error:
+        print(f"gitit: {error}", file=sys.stderr)
+        return 2
     if resolution is None:
-        print("gitit couldn't resolve that locally yet.", file=sys.stderr)
-        print("Try naming the operation and branches/remotes explicitly.", file=sys.stderr)
+        print("gitit couldn't resolve that with the limited offline resolver.", file=sys.stderr)
         return 2
     _show(resolution)
     if no_execute or not sys.stdin.isatty():
@@ -75,10 +83,10 @@ def _handle(prompt: str, cwd: Path, no_execute: bool) -> int:
 def main(argv: list[str] | None = None) -> int:
     args = _parser().parse_args(argv)
     if args.prompt:
-        return _handle(" ".join(args.prompt), args.cwd, args.no_execute)
+        return _handle(" ".join(args.prompt), args.cwd, args.no_execute, args.offline, args.model)
     if not sys.stdin.isatty():
         prompt = sys.stdin.read().strip()
-        return _handle(prompt, args.cwd, True) if prompt else 2
+        return _handle(prompt, args.cwd, True, args.offline, args.model) if prompt else 2
 
     print("gitit interactive mode - describe what you want Git to do; 'q' exits.")
     while True:
@@ -90,4 +98,4 @@ def main(argv: list[str] | None = None) -> int:
         if prompt.lower() in {"q", "quit", "exit"}:
             return 0
         if prompt:
-            _handle(prompt, args.cwd, args.no_execute)
+            _handle(prompt, args.cwd, args.no_execute, args.offline, args.model)

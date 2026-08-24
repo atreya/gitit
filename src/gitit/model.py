@@ -8,6 +8,7 @@ class Risk(IntEnum):
     READ_ONLY = 0
     MUTATING = 1
     HISTORY_REWRITE = 2
+    DESTRUCTIVE = 3
 
     @property
     def label(self) -> str:
@@ -15,6 +16,7 @@ class Risk(IntEnum):
             self.READ_ONLY: "read-only",
             self.MUTATING: "changes repository state",
             self.HISTORY_REWRITE: "rewrites local history",
+            self.DESTRUCTIVE: "may permanently discard or overwrite work",
         }[self]
 
 
@@ -37,3 +39,5 @@ class Resolution:
     intent: str
     candidates: tuple[Candidate, ...]
     clarification: str | None = None
+    source: str = "local"
+    elapsed_ms: int | None = None

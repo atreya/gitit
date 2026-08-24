@@ -1,7 +1,9 @@
 from __future__ import annotations
 
 import os
+import shutil
 import sys
+import textwrap
 from dataclasses import dataclass
 from typing import TextIO
 
@@ -10,13 +12,16 @@ from .model import Candidate, Resolution, Risk
 
 RESET = "\x1b[0m"
 BOLD = "\x1b[1m"
-ACCENT = "\x1b[38;5;173m"       # warm coral
-DOT = "\x1b[38;5;80m"           # bright teal
-COMMAND = "\x1b[38;5;222m"      # warm gold
-MUTED = "\x1b[38;5;245m"        # light gray
-SUCCESS = "\x1b[38;5;114m"
-WARNING = "\x1b[38;5;215m"
-DANGER = "\x1b[38;5;203m"
+DIM = "\x1b[2m"
+
+# Standard ANSI colors inherit the user's terminal palette. Commands deliberately
+# use the terminal's default foreground so they remain legible on light and dark themes.
+ACCENT = "\x1b[35m"              # theme-defined magenta
+MUTED = DIM                       # dimmed default foreground
+DOT = DIM                         # intentionally quiet status marker
+SUCCESS = "\x1b[32m"             # theme-defined green
+WARNING = "\x1b[33m"             # theme-defined yellow
+DANGER = "\x1b[31m"              # theme-defined red
 
 
 def supports_color(stream: TextIO) -> bool:
@@ -46,14 +51,14 @@ class TerminalUI:
         print(value, file=self.stream)
 
     def mark(self, label: str, *, tone: str = DOT, detail: str | None = None) -> None:
-        dot = self.paint("●", tone)
+        dot = self.paint("·", tone, BOLD)
         primary = self.paint(label, BOLD)
         suffix = f" {self.paint(detail, MUTED)}" if detail else ""
         self.line(f"{dot} {primary}{suffix}")
 
     def waiting(self, label: str = "Understanding your request…") -> None:
         if self.color:
-            self.line(f"{self.paint('●', DOT)} {self.paint(label, MUTED)}")
+            self.line(f"{self.paint('·', DOT, BOLD)} {self.paint(label, MUTED)}")
 
     def clear_previous_line(self) -> None:
         if self.color:
@@ -68,11 +73,8 @@ class TerminalUI:
             self.line(f"  {self.paint(resolution.clarification, MUTED)}")
         self.line()
         for index, candidate in enumerate(resolution.candidates, 1):
-            number = f"{index}." if len(resolution.candidates) > 1 else "›"
-            self.line(
-                f"  {self.paint(number, ACCENT, BOLD)} "
-                f"{self.paint(candidate.command, COMMAND, BOLD)}"
-            )
+            label = f"option {index}" if len(resolution.candidates) > 1 else "command"
+            self.command_box(candidate.command, label)
             self.line(f"     {self.paint(candidate.explanation, MUTED)}")
             risk_color = {
                 Risk.READ_ONLY: SUCCESS,
@@ -85,6 +87,33 @@ class TerminalUI:
                 f"{self.paint(candidate.risk.label, MUTED)}"
             )
             self.line()
+
+    def command_box(self, command: str, label: str = "command") -> None:
+        terminal_width = shutil.get_terminal_size(fallback=(88, 24)).columns
+        box_width = min(max(44, len(command) + 6), max(24, terminal_width - 4), 100)
+        inner_width = box_width - 4
+        wrapped = textwrap.wrap(
+            command,
+            width=inner_width,
+            break_long_words=False,
+            break_on_hyphens=False,
+        ) or [""]
+
+        label_text = f" {label} "
+        top_fill = "─" * max(1, box_width - len(label_text) - 3)
+        self.line(
+            f"  {self.paint('╭─', MUTED)}"
+            f"{self.paint(label_text, ACCENT, BOLD)}"
+            f"{self.paint(top_fill + '╮', MUTED)}"
+        )
+        for part in wrapped:
+            padding = " " * max(0, inner_width - len(part))
+            self.line(
+                f"  {self.paint('│', MUTED)} "
+                f"{self.paint(part, BOLD)}{padding} "
+                f"{self.paint('│', MUTED)}"
+            )
+        self.line(f"  {self.paint('╰' + '─' * (box_width - 2) + '╯', MUTED)}")
 
     def prompt(self, label: str, hint: str | None = None) -> str:
         suffix = f" {self.paint(hint, MUTED)}" if hint else ""

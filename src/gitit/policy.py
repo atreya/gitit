@@ -9,13 +9,13 @@ class PolicyError(ValueError):
 
 ALLOWED_GIT_COMMANDS = {
     "add", "am", "apply", "bisect", "blame", "branch", "checkout", "cherry-pick",
-    "clean", "clone", "commit", "describe", "diff", "fetch", "format-patch", "grep",
+    "clean", "clone", "commit", "describe", "diff", "difftool", "fetch", "format-patch", "grep",
     "init", "log", "merge", "merge-base", "mv", "pull", "push", "rebase", "reflog",
     "remote", "reset", "restore", "revert", "rm", "show", "show-branch", "stash",
     "status", "submodule", "switch", "tag", "worktree",
 }
 READ_ONLY_GIT_COMMANDS = {
-    "blame", "describe", "diff", "grep", "log", "merge-base", "reflog", "show",
+    "blame", "describe", "diff", "difftool", "grep", "log", "merge-base", "reflog", "show",
     "show-branch", "status",
 }
 

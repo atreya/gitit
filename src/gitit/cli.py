@@ -23,18 +23,6 @@ def _parser() -> argparse.ArgumentParser:
     return parser
 
 
-def _choose(resolution: Resolution, ui: TerminalUI) -> Candidate | None:
-    if len(resolution.candidates) == 1:
-        return resolution.candidates[0]
-    while True:
-        answer = ui.prompt("Choose a command", f"[1-{len(resolution.candidates)}]  q cancel").strip().lower()
-        if answer in {"q", "quit", "cancel", ""}:
-            return None
-        if answer.isdigit() and 1 <= int(answer) <= len(resolution.candidates):
-            return resolution.candidates[int(answer) - 1]
-        ui.error("Choose one of the numbered suggestions.")
-
-
 def _execute(candidate: Candidate, ctx: RepositoryContext, cwd: Path) -> int:
     if shutil.which(candidate.argv[0]) is None:
         print(f"gitit: '{candidate.argv[0]}' is not installed or not on PATH.", file=sys.stderr)
@@ -58,16 +46,11 @@ def _handle(prompt: str, cwd: Path, no_execute: bool, offline: bool, model: str 
     if resolution is None:
         TerminalUI(sys.stderr).error("The limited offline resolver could not understand that request.")
         return 2
-    ui.resolution(resolution)
     if no_execute or not sys.stdin.isatty():
+        ui.resolution(resolution)
         return 0
-    candidate = _choose(resolution, ui)
+    candidate = ui.select_candidate(resolution)
     if candidate is None:
-        ui.cancelled()
-        return 0
-    verb = "Run command?" if candidate.risk == Risk.READ_ONLY else "Confirm and run?"
-    answer = ui.prompt(verb, "y yes  ·  n no").strip().lower()
-    if answer not in {"y", "yes"}:
         ui.cancelled()
         return 0
     return _execute(candidate, ctx, cwd)

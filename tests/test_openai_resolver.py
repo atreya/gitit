@@ -55,6 +55,20 @@ class OpenAIResolverTests(unittest.TestCase):
         with self.assertRaises(ModelError):
             parse_model_output(output, "test-model", 1)
 
+    def test_accepts_difftool_as_read_only(self):
+        output = json.dumps({
+            "intent": "show_visual_diff",
+            "clarification": None,
+            "candidates": [{
+                "argv": ["git", "difftool", "--", "cli.py"],
+                "explanation": "Opens the configured visual diff tool for cli.py.",
+                "confidence": 0.98,
+            }],
+        })
+        result = parse_model_output(output, "test-model", 12)
+        self.assertEqual(result.candidates[0].command, "git difftool -- cli.py")
+        self.assertEqual(result.candidates[0].risk, Risk.READ_ONLY)
+
 
 if __name__ == "__main__":
     unittest.main()
